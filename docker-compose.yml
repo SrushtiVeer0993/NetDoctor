@@ -1,0 +1,46 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-netdoctor}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in the project .env file}
+      POSTGRES_DB: ${POSTGRES_DB:-netdoctor}
+    volumes:
+      - netdoctor_pgdata:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 5432 -U ${POSTGRES_USER:-netdoctor}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      HOST_AGENT_URL: ${HOST_AGENT_URL:-http://host.docker.internal:8765}
+      HOST_AGENT_TOKEN: ${NETDOCTOR_AGENT_TOKEN:-}
+    ports:
+      - "8000:8000"
+    # Packet capture / raw ping needs elevated privileges in the container.
+    cap_add:
+      - NET_RAW
+      - NET_ADMIN
+
+  frontend:
+    build: ./frontend
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      - backend
+    ports:
+      - "5173:5173"
+
+volumes:
+  netdoctor_pgdata:
